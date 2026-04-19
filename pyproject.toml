@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kppi"
+version = "2.0.0"
+description = "Kenya Policy Pressure Index – composite political-economic stress indicator"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pandas>=2.1",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "python-dotenv>=1.0",
+    "loguru>=0.7",
+    "streamlit>=1.35",
+    "plotly>=5.20",
+    "APScheduler>=3.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "responses>=0.25",  # mock HTTP
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

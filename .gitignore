@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+
+# Data & database
+data/*.db
+data/*.csv
+data/*.parquet
+data/*.xlsx
+data/*.xls
+logs/*.log
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# Test artefacts
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
