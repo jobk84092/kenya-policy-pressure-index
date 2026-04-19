@@ -24,6 +24,9 @@ from kppi.index.normalizer import (
     normalise_bond_yield,
     normalise_market_stress,
     normalise_political,
+    normalise_forex_reserves,
+    normalise_eurobond_spread,
+    normalise_mpesa_volume,
 )
 
 
@@ -56,6 +59,9 @@ class ComponentScores:
     bond_yield: float
     market_stress: float
     political: float
+    forex_reserves: float
+    eurobond_spread: float
+    mpesa_volume: float
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -64,6 +70,9 @@ class ComponentScores:
             "bond_yield": self.bond_yield,
             "market_stress": self.market_stress,
             "political": self.political,
+            "forex_reserves": self.forex_reserves,
+            "eurobond_spread": self.eurobond_spread,
+            "mpesa_volume": self.mpesa_volume,
         }
 
 
@@ -87,6 +96,9 @@ class KPPIResult:
     raw_bond_yield: Optional[float] = None
     raw_market_stress: Optional[float] = None
     raw_political: Optional[float] = None
+    raw_forex_reserves: Optional[float] = None
+    raw_eurobond_spread: Optional[float] = None
+    raw_mpesa_volume: Optional[float] = None
 
     # 4-week moving average of political (set by jobs.py after DB query)
     political_smoothed: Optional[float] = None
@@ -107,12 +119,18 @@ class KPPIResult:
             "score_bond_yield": self.components.bond_yield,
             "score_market_stress": self.components.market_stress,
             "score_political": self.components.political,
+            "score_forex_reserves": self.components.forex_reserves,
+            "score_eurobond_spread": self.components.eurobond_spread,
+            "score_mpesa_volume": self.components.mpesa_volume,
             # Raw values
             "raw_inflation": self.raw_inflation,
             "raw_fx_rate": self.raw_fx_rate,
             "raw_bond_yield": self.raw_bond_yield,
             "raw_market_stress": self.raw_market_stress,
             "raw_political": self.raw_political,
+            "raw_forex_reserves": self.raw_forex_reserves,
+            "raw_eurobond_spread": self.raw_eurobond_spread,
+            "raw_mpesa_volume": self.raw_mpesa_volume,
             # Smoothed political (None until enough history is available)
             "political_smoothed": self.political_smoothed,
         }
@@ -141,11 +159,14 @@ class KPPICalculator:
 
     def __init__(self) -> None:
         self._weights = {
-            "inflation": settings.weight_inflation,
-            "fx_rate":   settings.weight_fx,
-            "bond_yield":settings.weight_bond,
-            "market_stress":settings.weight_market_stress,
-            "political": settings.weight_political,
+            "inflation":      settings.weight_inflation,
+            "fx_rate":        settings.weight_fx,
+            "bond_yield":     settings.weight_bond,
+            "market_stress":  settings.weight_market_stress,
+            "political":      settings.weight_political,
+            "forex_reserves": settings.weight_forex_reserves,
+            "eurobond_spread":settings.weight_eurobond_spread,
+            "mpesa_volume":   settings.weight_mpesa_volume,
         }
 
     def _assess_confidence(self, snapshot: RawSnapshot) -> tuple[float, str, str]:
@@ -154,11 +175,14 @@ class KPPICalculator:
         flags: list[str] = []
 
         indicators = {
-            "inflation": snapshot.inflation,
-            "fx_rate": snapshot.fx_rate,
-            "bond_yield": snapshot.bond_yield,
-            "market_stress": snapshot.market_stress,
-            "political": snapshot.political_pressure,
+            "inflation":      snapshot.inflation,
+            "fx_rate":        snapshot.fx_rate,
+            "bond_yield":     snapshot.bond_yield,
+            "market_stress":  snapshot.market_stress,
+            "political":      snapshot.political_pressure,
+            "forex_reserves": snapshot.forex_reserves,
+            "eurobond_spread":snapshot.eurobond_spread,
+            "mpesa_volume":   snapshot.mpesa_volume,
         }
 
         for name, reading in indicators.items():
@@ -182,6 +206,12 @@ class KPPICalculator:
         if snapshot.market_stress is not None and snapshot.market_stress.value <= 0:
             score -= 10
             flags.append("market_stress non-positive")
+        if snapshot.forex_reserves is not None and snapshot.forex_reserves.value <= 0:
+            score -= 10
+            flags.append("forex_reserves non-positive")
+        if snapshot.eurobond_spread is not None and snapshot.eurobond_spread.value < 0:
+            score -= 10
+            flags.append("eurobond_spread negative")
 
         # Single-source political penalty: blended source contains "+";
         # a single-source reading means one signal failed and we can't cross-check.
@@ -212,33 +242,45 @@ class KPPICalculator:
                 return fallback, self._MISSING_SUBSTITUTE
             return reading.value, reading.value  # raw; normalisation applied below
 
-        raw_inf  = snapshot.inflation.value   if snapshot.inflation   else None
-        raw_fx   = snapshot.fx_rate.value     if snapshot.fx_rate     else None
-        raw_bond = snapshot.bond_yield.value  if snapshot.bond_yield  else None
-        raw_stress = snapshot.market_stress.value if snapshot.market_stress else None
-        raw_pol  = snapshot.political_pressure.value if snapshot.political_pressure else None
+        raw_inf    = snapshot.inflation.value        if snapshot.inflation       else None
+        raw_fx     = snapshot.fx_rate.value           if snapshot.fx_rate         else None
+        raw_bond   = snapshot.bond_yield.value        if snapshot.bond_yield      else None
+        raw_stress = snapshot.market_stress.value     if snapshot.market_stress   else None
+        raw_pol    = snapshot.political_pressure.value if snapshot.political_pressure else None
+        raw_forex  = snapshot.forex_reserves.value    if snapshot.forex_reserves  else None
+        raw_euro   = snapshot.eurobond_spread.value   if snapshot.eurobond_spread else None
+        raw_mpesa  = snapshot.mpesa_volume.value      if snapshot.mpesa_volume    else None
 
-        score_inf  = normalise_inflation(raw_inf)   if raw_inf  is not None else self._MISSING_SUBSTITUTE
-        score_fx   = normalise_fx_rate(raw_fx, cfg.fx_baseline)  if raw_fx   is not None else self._MISSING_SUBSTITUTE
-        score_bond = normalise_bond_yield(raw_bond) if raw_bond is not None else self._MISSING_SUBSTITUTE
+        score_inf    = normalise_inflation(raw_inf)                          if raw_inf    is not None else self._MISSING_SUBSTITUTE
+        score_fx     = normalise_fx_rate(raw_fx, cfg.fx_baseline)            if raw_fx     is not None else self._MISSING_SUBSTITUTE
+        score_bond   = normalise_bond_yield(raw_bond)                        if raw_bond   is not None else self._MISSING_SUBSTITUTE
         score_stress = normalise_market_stress(raw_stress, cfg.nasi_baseline) if raw_stress is not None else self._MISSING_SUBSTITUTE
-        score_pol  = normalise_political(raw_pol)   if raw_pol  is not None else self._MISSING_SUBSTITUTE
+        score_pol    = normalise_political(raw_pol)                          if raw_pol    is not None else self._MISSING_SUBSTITUTE
+        score_forex  = normalise_forex_reserves(raw_forex)                   if raw_forex  is not None else self._MISSING_SUBSTITUTE
+        score_euro   = normalise_eurobond_spread(raw_euro)                   if raw_euro   is not None else self._MISSING_SUBSTITUTE
+        score_mpesa  = normalise_mpesa_volume(raw_mpesa)                     if raw_mpesa  is not None else self._MISSING_SUBSTITUTE
 
         components = ComponentScores(
-            inflation=round(score_inf,  2),
-            fx_rate=round(score_fx,   2),
-            bond_yield=round(score_bond, 2),
-            market_stress=round(score_stress,  2),
-            political=round(score_pol,  2),
+            inflation=round(score_inf,    2),
+            fx_rate=round(score_fx,       2),
+            bond_yield=round(score_bond,  2),
+            market_stress=round(score_stress, 2),
+            political=round(score_pol,    2),
+            forex_reserves=round(score_forex, 2),
+            eurobond_spread=round(score_euro, 2),
+            mpesa_volume=round(score_mpesa,   2),
         )
 
         # ── Weighted composite ─────────────────────────────────────────────
         composite = (
-            self._weights["inflation"]  * components.inflation +
-            self._weights["fx_rate"]    * components.fx_rate   +
-            self._weights["bond_yield"] * components.bond_yield +
-            self._weights["market_stress"] * components.market_stress +
-            self._weights["political"]  * components.political
+            self._weights["inflation"]      * components.inflation +
+            self._weights["fx_rate"]        * components.fx_rate +
+            self._weights["bond_yield"]     * components.bond_yield +
+            self._weights["market_stress"]  * components.market_stress +
+            self._weights["political"]      * components.political +
+            self._weights["forex_reserves"] * components.forex_reserves +
+            self._weights["eurobond_spread"]* components.eurobond_spread +
+            self._weights["mpesa_volume"]   * components.mpesa_volume
         )
         composite = round(composite, 2)
 
@@ -260,6 +302,9 @@ class KPPICalculator:
             raw_bond_yield=raw_bond,
             raw_market_stress=raw_stress,
             raw_political=raw_pol,
+            raw_forex_reserves=raw_forex,
+            raw_eurobond_spread=raw_euro,
+            raw_mpesa_volume=raw_mpesa,
         )
 
         logger.info(result.summary())

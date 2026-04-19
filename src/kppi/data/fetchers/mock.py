@@ -80,3 +80,43 @@ class MockPoliticalFetcher(BaseFetcher):
             unit="score_0_100",
             source="mock",
         )
+
+
+# ── New indicator mocks ───────────────────────────────────────────────────────
+
+_MOCK_FOREX_RESERVES = 4.8    # months of import cover (Kenya ~4.5–5 months recently)
+_MOCK_EUROBOND_SPREAD = 7.5   # pp above US 10yr (Kenya typical range 6–10 pp)
+_MOCK_MPESA_YOY = 12.0        # % YoY growth in M-Pesa transaction value
+
+
+class MockForexReservesFetcher(BaseFetcher):
+    def fetch(self) -> IndicatorReading:
+        return IndicatorReading(
+            name="forex_reserves",
+            value=_jitter(_MOCK_FOREX_RESERVES),
+            unit="months_import_cover",
+            source="mock",
+            notes="Synthetic demo value – enable ForexReservesFetcher for real data",
+        )
+
+
+class MockEurobondSpreadFetcher(BaseFetcher):
+    def fetch(self) -> IndicatorReading:
+        return IndicatorReading(
+            name="eurobond_spread",
+            value=_jitter(_MOCK_EUROBOND_SPREAD),
+            unit="percentage_points",
+            source="mock",
+            notes="Synthetic demo value – enable EurobondSpreadFetcher for real data",
+        )
+
+
+class MockMPesaVolumeFetcher(BaseFetcher):
+    def fetch(self) -> IndicatorReading:
+        return IndicatorReading(
+            name="mpesa_volume",
+            value=_jitter(_MOCK_MPESA_YOY),
+            unit="percent_yoy",
+            source="mock",
+            notes="Synthetic demo value – enable MPesaVolumeFetcher for real data",
+        )

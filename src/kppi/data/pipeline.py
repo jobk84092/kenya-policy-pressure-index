@@ -23,11 +23,18 @@ from kppi.data.fetchers import (
     PoliticalPressureFetcher,
     KenyaNewsPoliticalFetcher,
     NASIFetcher,
+    ForexReservesFetcher,
+    WorldBankReservesFetcher,
+    EurobondSpreadFetcher,
+    MPesaVolumeFetcher,
     MockInflationFetcher,
     MockFXRateFetcher,
     MockBondYieldFetcher,
     MockMarketStressFetcher,
     MockPoliticalFetcher,
+    MockForexReservesFetcher,
+    MockEurobondSpreadFetcher,
+    MockMPesaVolumeFetcher,
 )
 
 
@@ -44,11 +51,17 @@ class RawSnapshot:
     bond_yield: Optional[IndicatorReading] = None
     market_stress: Optional[IndicatorReading] = None
     political_pressure: Optional[IndicatorReading] = None
+    forex_reserves: Optional[IndicatorReading] = None
+    eurobond_spread: Optional[IndicatorReading] = None
+    mpesa_volume: Optional[IndicatorReading] = None
     fetched_at: datetime = field(default_factory=datetime.utcnow)
 
     def as_dict(self) -> dict:
         result = {"fetched_at": self.fetched_at.isoformat()}
-        for name in ("inflation", "fx_rate", "bond_yield", "market_stress", "political_pressure"):
+        for name in (
+            "inflation", "fx_rate", "bond_yield", "market_stress",
+            "political_pressure", "forex_reserves", "eurobond_spread", "mpesa_volume",
+        ):
             reading: Optional[IndicatorReading] = getattr(self, name)
             result[name] = reading.value if reading else None
             result[f"{name}_source"] = reading.source if reading else "missing"
@@ -58,14 +71,20 @@ class RawSnapshot:
     def is_complete(self) -> bool:
         return all(
             getattr(self, name) is not None
-            for name in ("inflation", "fx_rate", "bond_yield", "market_stress", "political_pressure")
+            for name in (
+                "inflation", "fx_rate", "bond_yield", "market_stress",
+                "political_pressure", "forex_reserves", "eurobond_spread", "mpesa_volume",
+            )
         )
 
     @property
     def missing_indicators(self) -> list[str]:
         return [
             name
-            for name in ("inflation", "fx_rate", "bond_yield", "market_stress", "political_pressure")
+            for name in (
+                "inflation", "fx_rate", "bond_yield", "market_stress",
+                "political_pressure", "forex_reserves", "eurobond_spread", "mpesa_volume",
+            )
             if getattr(self, name) is None
         ]
 
@@ -169,6 +188,42 @@ class DataPipeline:
             logger.warning("All political fetchers failed; falling back to mock")
             return MockPoliticalFetcher().safe_fetch()
 
+    # ── Orchestrator ────────────────────────────────────────────────
+    # ── Forex Reserves ───────────────────────────────────────────
+    def _fetch_forex_reserves(self) -> Optional[IndicatorReading]:
+        if self._use_mock:
+            return MockForexReservesFetcher().safe_fetch()
+        # Primary: CBK forex reserves page
+        reading = ForexReservesFetcher().safe_fetch()
+        if reading is not None:
+            return reading
+        logger.warning("CBK forex reserves fetch failed; trying World Bank fallback")
+        reading = WorldBankReservesFetcher().safe_fetch()
+        if reading is None:
+            logger.warning("Live forex reserves fetch failed; falling back to mock")
+            reading = MockForexReservesFetcher().safe_fetch()
+        return reading
+
+    # ── Eurobond Spread ─────────────────────────────────────────
+    def _fetch_eurobond_spread(self) -> Optional[IndicatorReading]:
+        if self._use_mock:
+            return MockEurobondSpreadFetcher().safe_fetch()
+        reading = EurobondSpreadFetcher().safe_fetch()
+        if reading is None:
+            logger.warning("Eurobond spread fetch failed; falling back to mock")
+            reading = MockEurobondSpreadFetcher().safe_fetch()
+        return reading
+
+    # ── M-Pesa Volume ────────────────────────────────────────────
+    def _fetch_mpesa_volume(self) -> Optional[IndicatorReading]:
+        if self._use_mock:
+            return MockMPesaVolumeFetcher().safe_fetch()
+        reading = MPesaVolumeFetcher().safe_fetch()
+        if reading is None:
+            logger.warning("M-Pesa volume fetch failed; falling back to mock")
+            reading = MockMPesaVolumeFetcher().safe_fetch()
+        return reading
+
     # ── Orchestrator ──────────────────────────────────────────────────────────
     def run(self) -> RawSnapshot:
         logger.info("DataPipeline: starting data collection (mock={})", self._use_mock)
@@ -179,6 +234,9 @@ class DataPipeline:
             bond_yield=self._fetch_bond_yield(),
             market_stress=self._fetch_market_stress(),
             political_pressure=self._fetch_political(),
+            forex_reserves=self._fetch_forex_reserves(),
+            eurobond_spread=self._fetch_eurobond_spread(),
+            mpesa_volume=self._fetch_mpesa_volume(),
         )
 
         if snapshot.is_complete:

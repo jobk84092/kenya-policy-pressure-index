@@ -45,12 +45,17 @@ class Settings(BaseSettings):
     smtp_user: str = ""          # your Gmail address
     smtp_password: str = ""      # Gmail App Password (not your login password)
 
-    # ── Index weights ─────────────────────────────────────────────────────────
-    weight_inflation: float = 0.25
-    weight_fx: float = 0.20
-    weight_bond: float = 0.20
-    weight_market_stress: float = 0.15
-    weight_political: float = 0.20
+    # ── Index weights (must sum to 1.0 across all 8 indicators) ─────────────────
+    # Economic / price signals
+    weight_inflation: float = 0.15
+    weight_fx: float = 0.12
+    weight_bond: float = 0.10
+    weight_market_stress: float = 0.08
+    weight_political: float = 0.15
+    # New leading indicators
+    weight_forex_reserves: float = 0.15
+    weight_eurobond_spread: float = 0.15
+    weight_mpesa_volume: float = 0.10
 
     # ── Normalisation baselines ───────────────────────────────────────────────
     inflation_baseline: float = 5.0    # % YoY – "normal" Kenyan inflation
@@ -70,6 +75,9 @@ class Settings(BaseSettings):
             + self.weight_bond
             + self.weight_market_stress
             + self.weight_political
+            + self.weight_forex_reserves
+            + self.weight_eurobond_spread
+            + self.weight_mpesa_volume
         )
         if abs(total - 1.0) > 1e-6:
             raise ValueError(

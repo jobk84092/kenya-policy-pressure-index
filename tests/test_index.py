@@ -11,6 +11,9 @@ from kppi.index.normalizer import (
     normalise_bond_yield,
     normalise_market_stress,
     normalise_political,
+    normalise_forex_reserves,
+    normalise_eurobond_spread,
+    normalise_mpesa_volume,
 )
 from kppi.index.calculator import KPPICalculator, KPPIResult
 from kppi.data.fetchers.base import IndicatorReading
@@ -108,6 +111,53 @@ class TestNormalisePolitical:
         assert normalise_political(50.0) == 50.0
 
 
+class TestNormaliseForexReserves:
+    def test_high_reserves_gives_zero(self):
+        assert normalise_forex_reserves(10.0) == 0.0
+
+    def test_imf_minimum_gives_50(self):
+        score = normalise_forex_reserves(4.0)
+        assert 45 <= score <= 55
+
+    def test_very_low_reserves_gives_100(self):
+        assert normalise_forex_reserves(0.5) == 100.0
+
+    def test_monotone_decrease(self):
+        """More reserves → lower pressure."""
+        assert normalise_forex_reserves(6.0) < normalise_forex_reserves(3.0)
+
+
+class TestNormaliseEurobondSpread:
+    def test_very_low_spread_gives_zero(self):
+        assert normalise_eurobond_spread(1.0) == 0.0
+
+    def test_normal_spread_gives_moderate(self):
+        score = normalise_eurobond_spread(4.0)
+        assert 15 <= score <= 25
+
+    def test_crisis_spread_gives_high(self):
+        assert normalise_eurobond_spread(14.0) == 100.0
+
+    def test_monotone_increase(self):
+        assert normalise_eurobond_spread(5.0) < normalise_eurobond_spread(9.0)
+
+
+class TestNormaliseMPesaVolume:
+    def test_strong_growth_gives_zero(self):
+        assert normalise_mpesa_volume(25.0) == 0.0
+
+    def test_flat_growth_gives_high_pressure(self):
+        score = normalise_mpesa_volume(0.0)
+        assert 55 <= score <= 70
+
+    def test_contraction_gives_max(self):
+        assert normalise_mpesa_volume(-15.0) == 100.0
+
+    def test_monotone_decrease(self):
+        """Higher growth → lower pressure (inverted)."""
+        assert normalise_mpesa_volume(15.0) < normalise_mpesa_volume(5.0)
+
+
 # ── Calculator integration tests ──────────────────────────────────────────────
 
 def _make_reading(name: str, value: float, unit: str = "test") -> IndicatorReading:
@@ -121,6 +171,9 @@ def _make_snapshot(**overrides) -> RawSnapshot:
         bond_yield=_make_reading("bond_yield", 16.0, "percent"),
         market_stress=_make_reading("market_stress", 158.0, "nasi_index_level"),
         political_pressure=_make_reading("political_pressure", 45.0, "score_0_100"),
+        forex_reserves=_make_reading("forex_reserves", 4.8, "months_import_cover"),
+        eurobond_spread=_make_reading("eurobond_spread", 7.5, "percentage_points"),
+        mpesa_volume=_make_reading("mpesa_volume", 12.0, "percent_yoy"),
     )
     defaults.update(overrides)
     return RawSnapshot(**defaults, fetched_at=datetime.utcnow())
@@ -149,6 +202,9 @@ class TestKPPICalculator:
             bond_yield=_make_reading("bond_yield", 25.0),
             market_stress=_make_reading("market_stress", 80.0),   # 50% decline from baseline=160
             political_pressure=_make_reading("political_pressure", 90.0),
+            forex_reserves=_make_reading("forex_reserves", 1.5),  # critically low
+            eurobond_spread=_make_reading("eurobond_spread", 12.0),  # crisis spread
+            mpesa_volume=_make_reading("mpesa_volume", -8.0),     # contracting
         )
         result = KPPICalculator().compute(snap)
         assert result.composite_score >= 70, "Extreme stress should produce Severe+ tier"
@@ -160,6 +216,9 @@ class TestKPPICalculator:
             bond_yield=_make_reading("bond_yield", 7.0),
             market_stress=_make_reading("market_stress", 170.0),  # above baseline=160 → 0 stress
             political_pressure=_make_reading("political_pressure", 5.0),
+            forex_reserves=_make_reading("forex_reserves", 8.0),  # comfortable
+            eurobond_spread=_make_reading("eurobond_spread", 2.5), # near normal
+            mpesa_volume=_make_reading("mpesa_volume", 20.0),     # strong growth
         )
         result = KPPICalculator().compute(snap)
         assert result.composite_score <= 30, "Benign conditions should be Low tier"
@@ -179,6 +238,8 @@ class TestKPPICalculator:
             "confidence_score", "confidence_label", "confidence_notes",
             "score_inflation", "score_fx_rate", "score_bond_yield",
             "score_market_stress", "score_political",
+            "score_forex_reserves", "score_eurobond_spread", "score_mpesa_volume",
+            "raw_forex_reserves", "raw_eurobond_spread", "raw_mpesa_volume",
         }
         assert required.issubset(d.keys())
 

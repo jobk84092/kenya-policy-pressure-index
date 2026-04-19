@@ -68,11 +68,14 @@ def _build_html(result: KPPIResult) -> str:
         )
 
     rows = [
-        ("Inflation",        result.components.inflation,    result.raw_inflation,    "%",          "World Bank"),
-        ("FX Rate (KES/USD)", result.components.fx_rate,     result.raw_fx_rate,      "KES/USD",    "ExchangeRate API"),
-        ("Bond Yield (91d)", result.components.bond_yield,   result.raw_bond_yield,   "%",          "CBK"),
-        ("Market Stress (NASI)", result.components.market_stress, result.raw_market_stress, "pts", "nseinsider.co.ke"),
-        ("Political (live)", result.components.political,    result.raw_political,    "score",      "Google News RSS"),
+        ("Inflation",             result.components.inflation,       result.raw_inflation,       "%",      "World Bank"),
+        ("FX Rate (KES/USD)",     result.components.fx_rate,         result.raw_fx_rate,         "KES/USD","ExchangeRate API"),
+        ("Bond Yield (91d)",      result.components.bond_yield,      result.raw_bond_yield,      "%",      "CBK"),
+        ("Market Stress (NASI)",  result.components.market_stress,   result.raw_market_stress,   "pts",    "nseinsider.co.ke"),
+        ("Political (live)",      result.components.political,       result.raw_political,       "score",  "Google News RSS"),
+        ("Forex Reserves",        result.components.forex_reserves,  result.raw_forex_reserves,  "mo impt","CBK"),
+        ("Eurobond Spread",       result.components.eurobond_spread, result.raw_eurobond_spread, "pp",     "US Treasury + WGB"),
+        ("M-Pesa Volume (YoY)",   result.components.mpesa_volume,    result.raw_mpesa_volume,    "% YoY",  "CBK Payments"),
     ]
 
     # Add 4-week smoothed political row when available
@@ -209,7 +212,10 @@ Component Scores (0 = calm, 100 = crisis)
   Bond Yield (91d)   : {result.components.bond_yield:.1f}  (raw: {result.raw_bond_yield:.2f}%)
   Market Stress NASI : {result.components.market_stress:.1f}  (raw: {result.raw_market_stress:.2f} pts)
   Political (live)   : {result.components.political:.1f}  (raw: {result.raw_political:.2f} score)
-{f'  Political (4-wk MA): {result.political_smoothed:.1f}' if result.political_smoothed is not None else ''}
+{f'  Political (4-wk MA): {result.political_smoothed:.1f}' if result.political_smoothed is not None else ''}\
+  Forex Reserves     : {result.components.forex_reserves:.1f}  (raw: {result.raw_forex_reserves:.2f} months import cover)
+  Eurobond Spread    : {result.components.eurobond_spread:.1f}  (raw: {result.raw_eurobond_spread:.2f} pp vs US 10yr)
+  M-Pesa Vol (YoY)   : {result.components.mpesa_volume:.1f}  (raw: {result.raw_mpesa_volume:+.1f}% YoY)
 
 Scale: 0–30 Low | 30–50 Moderate | 50–70 High | 70–85 Severe | 85+ Crisis
 

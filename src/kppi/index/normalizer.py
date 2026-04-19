@@ -153,3 +153,81 @@ def normalise_political(score_0_100: float) -> float:
     else:
         capped = score_0_100
     return _clamp(capped)
+
+
+def normalise_forex_reserves(months_import_cover: float) -> float:
+    """
+    Forex reserves in months of import cover → pressure score 0–100.
+
+    Inverted scale: more reserves = lower pressure.
+    IMF adequacy thresholds for Kenya used as anchor points:
+      ≥ 8 months  → 0    (very comfortable buffer)
+        6 months  → 15
+        4.5 months→ 35   (CBK target floor)
+        4 months  → 50   (IMF minimum guidance)
+        3 months  → 70
+        2 months  → 88
+      ≤ 1 month   → 100  (acute crisis)
+    """
+    bp = [
+        (1.0,  100.0),
+        (2.0,   88.0),
+        (3.0,   70.0),
+        (4.0,   50.0),
+        (4.5,   35.0),
+        (6.0,   15.0),
+        (8.0,    0.0),
+    ]
+    return _clamp(_piecewise_linear(months_import_cover, bp))
+
+
+def normalise_eurobond_spread(spread_pp: float) -> float:
+    """
+    Kenya Eurobond sovereign spread above US 10yr Treasury (percentage points)
+    → pressure score 0–100.
+
+    A wider spread = higher investor risk premium = more stress.
+    Breakpoints calibrated to Kenya's historical spread range:
+      ≤ 2 pp  → 0    (excellent credit perception)
+        4 pp  → 20   (normal / pre-2020 baseline)
+        6 pp  → 45   (elevated but manageable)
+        8 pp  → 65   (high — IMF / market concern)
+       10 pp  → 85   (severe — Eurobond rollover risk)
+      ≥ 14 pp → 100  (crisis — near-default pricing)
+    """
+    bp = [
+        (0.0,   0.0),
+        (2.0,   0.0),
+        (4.0,  20.0),
+        (6.0,  45.0),
+        (8.0,  65.0),
+        (10.0, 85.0),
+        (14.0, 100.0),
+    ]
+    return _clamp(_piecewise_linear(spread_pp, bp))
+
+
+def normalise_mpesa_volume(yoy_growth_pct: float) -> float:
+    """
+    M-Pesa / mobile money transaction value YoY growth (%) → pressure score 0–100.
+
+    Inverted scale: strong growth = low pressure; contraction = high pressure.
+    Kenya's mobile money growth has averaged ~15–25% YoY over 2015–2023.
+      ≥ 20 % YoY → 0    (vibrant economic activity)
+        15 %     → 8
+        10 %     → 20
+         5 %     → 40
+         0 %     → 62   (stagnation — nominal growth = inflation erosion)
+        -5 %     → 80
+      ≤ -10 %    → 100  (sharp contraction)
+    """
+    bp = [
+        (-10.0, 100.0),
+        ( -5.0,  80.0),
+        (  0.0,  62.0),
+        (  5.0,  40.0),
+        ( 10.0,  20.0),
+        ( 15.0,   8.0),
+        ( 20.0,   0.0),
+    ]
+    return _clamp(_piecewise_linear(yoy_growth_pct, bp))

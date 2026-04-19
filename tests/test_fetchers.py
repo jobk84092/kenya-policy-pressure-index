@@ -23,6 +23,9 @@ from kppi.data.fetchers.mock import (
     MockBondYieldFetcher,
     MockMarketStressFetcher,
     MockPoliticalFetcher,
+    MockForexReservesFetcher,
+    MockEurobondSpreadFetcher,
+    MockMPesaVolumeFetcher,
 )
 
 # ── Mock fetchers (no network) ────────────────────────────────────────────────
@@ -63,10 +66,31 @@ class TestMockFetchers:
             MockBondYieldFetcher(),
             MockMarketStressFetcher(),
             MockPoliticalFetcher(),
+            MockForexReservesFetcher(),
+            MockEurobondSpreadFetcher(),
+            MockMPesaVolumeFetcher(),
         ]
         for fetcher in fetchers:
             r = fetcher.fetch()
             assert r.source == "mock", f"{type(fetcher).__name__} has wrong source"
+
+    def test_mock_forex_reserves_plausible(self):
+        r = MockForexReservesFetcher().fetch()
+        assert r.name == "forex_reserves"
+        assert 1.0 <= r.value <= 24.0
+        assert r.unit == "months_import_cover"
+
+    def test_mock_eurobond_spread_plausible(self):
+        r = MockEurobondSpreadFetcher().fetch()
+        assert r.name == "eurobond_spread"
+        assert 0.0 <= r.value <= 20.0
+        assert r.unit == "percentage_points"
+
+    def test_mock_mpesa_volume_plausible(self):
+        r = MockMPesaVolumeFetcher().fetch()
+        assert r.name == "mpesa_volume"
+        assert -50 <= r.value <= 100
+        assert r.unit == "percent_yoy"
 
 
 # ── NASI fetcher ──────────────────────────────────────────────────────────────

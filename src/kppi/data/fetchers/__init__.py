@@ -5,6 +5,9 @@ from kppi.data.fetchers.exchangerate import FXRateFetcher
 from kppi.data.fetchers.gdelt import PoliticalPressureFetcher
 from kppi.data.fetchers.kenya_news import KenyaNewsPoliticalFetcher
 from kppi.data.fetchers.nasi import NASIFetcher
+from kppi.data.fetchers.forex_reserves import ForexReservesFetcher, WorldBankReservesFetcher
+from kppi.data.fetchers.eurobond import EurobondSpreadFetcher
+from kppi.data.fetchers.mpesa import MPesaVolumeFetcher
 from kppi.data.fetchers.market_stress import (
     MarketStressFetcher,
     EMBIFetcher,
@@ -17,6 +20,9 @@ from kppi.data.fetchers.mock import (
     MockBondYieldFetcher,
     MockMarketStressFetcher,
     MockPoliticalFetcher,
+    MockForexReservesFetcher,
+    MockEurobondSpreadFetcher,
+    MockMPesaVolumeFetcher,
 )
 
 __all__ = [
@@ -29,6 +35,10 @@ __all__ = [
     "PoliticalPressureFetcher",
     "KenyaNewsPoliticalFetcher",
     "NASIFetcher",
+    "ForexReservesFetcher",
+    "WorldBankReservesFetcher",
+    "EurobondSpreadFetcher",
+    "MPesaVolumeFetcher",
     "MarketStressFetcher",
     "EMBIFetcher",
     "CurrencyVolatilityFetcher",
@@ -38,4 +48,7 @@ __all__ = [
     "MockBondYieldFetcher",
     "MockMarketStressFetcher",
     "MockPoliticalFetcher",
+    "MockForexReservesFetcher",
+    "MockEurobondSpreadFetcher",
+    "MockMPesaVolumeFetcher",
 ]

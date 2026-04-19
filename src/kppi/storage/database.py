@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS kppi_readings (
     score_bond_yield  REAL,
     score_market_stress REAL,
     score_political   REAL,
+    score_forex_reserves REAL,
+    score_eurobond_spread REAL,
+    score_mpesa_volume REAL,
 
     -- Raw indicator values
     raw_inflation     REAL,
@@ -48,6 +51,10 @@ CREATE TABLE IF NOT EXISTS kppi_readings (
     raw_bond_yield    REAL,
     raw_market_stress REAL,
     raw_political     REAL,
+    raw_forex_reserves REAL,
+    raw_eurobond_spread REAL,
+    raw_mpesa_volume  REAL,
+
     -- Smoothed political (4-week moving average, computed in jobs.py)
     political_smoothed REAL
 );
@@ -118,12 +125,19 @@ class Database:
                 for row in conn.execute("PRAGMA table_info(kppi_readings)").fetchall()
             }
             for col, col_type in (
-                ("score_market_stress", "REAL"),
-                ("raw_market_stress", "REAL"),
-                ("confidence_score", "REAL"),
-                ("confidence_label", "TEXT"),
-                ("confidence_notes", "TEXT"),
-                ("political_smoothed", "REAL"),
+                ("score_market_stress",   "REAL"),
+                ("raw_market_stress",     "REAL"),
+                ("confidence_score",      "REAL"),
+                ("confidence_label",      "TEXT"),
+                ("confidence_notes",      "TEXT"),
+                ("political_smoothed",    "REAL"),
+                # v3: new leading indicators
+                ("score_forex_reserves",  "REAL"),
+                ("score_eurobond_spread", "REAL"),
+                ("score_mpesa_volume",    "REAL"),
+                ("raw_forex_reserves",    "REAL"),
+                ("raw_eurobond_spread",   "REAL"),
+                ("raw_mpesa_volume",      "REAL"),
             ):
                 if col not in existing:
                     conn.execute(
@@ -143,12 +157,16 @@ class Database:
         INSERT OR IGNORE INTO kppi_readings (
             timestamp, composite_score, tier, confidence_score, confidence_label, confidence_notes,
             score_inflation, score_fx_rate, score_bond_yield, score_market_stress, score_political,
+            score_forex_reserves, score_eurobond_spread, score_mpesa_volume,
             raw_inflation, raw_fx_rate, raw_bond_yield, raw_market_stress, raw_political,
+            raw_forex_reserves, raw_eurobond_spread, raw_mpesa_volume,
             political_smoothed
         ) VALUES (
             :timestamp, :composite_score, :tier, :confidence_score, :confidence_label, :confidence_notes,
             :score_inflation, :score_fx_rate, :score_bond_yield, :score_market_stress, :score_political,
+            :score_forex_reserves, :score_eurobond_spread, :score_mpesa_volume,
             :raw_inflation, :raw_fx_rate, :raw_bond_yield, :raw_market_stress, :raw_political,
+            :raw_forex_reserves, :raw_eurobond_spread, :raw_mpesa_volume,
             :political_smoothed
         )
         """
