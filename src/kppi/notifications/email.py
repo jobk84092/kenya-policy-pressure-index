@@ -207,15 +207,15 @@ Confidence      : {result.confidence_score:.0f}% ({result.confidence_label})
 
 Component Scores (0 = calm, 100 = crisis)
 ------------------------------------------
-  Inflation          : {result.components.inflation:.1f}  (raw: {result.raw_inflation:.2f}%)
-  FX Rate (KES/USD)  : {result.components.fx_rate:.1f}  (raw: {result.raw_fx_rate:.2f})
-  Bond Yield (91d)   : {result.components.bond_yield:.1f}  (raw: {result.raw_bond_yield:.2f}%)
-  Market Stress NASI : {result.components.market_stress:.1f}  (raw: {result.raw_market_stress:.2f} pts)
-  Political (live)   : {result.components.political:.1f}  (raw: {result.raw_political:.2f} score)
+  Inflation          : {result.components.inflation:.1f}  (raw: {f"{result.raw_inflation:.2f}%" if result.raw_inflation is not None else "n/a"})
+  FX Rate (KES/USD)  : {result.components.fx_rate:.1f}  (raw: {f"{result.raw_fx_rate:.2f}" if result.raw_fx_rate is not None else "n/a"})
+  Bond Yield (91d)   : {result.components.bond_yield:.1f}  (raw: {f"{result.raw_bond_yield:.2f}%" if result.raw_bond_yield is not None else "n/a"})
+  Market Stress NASI : {result.components.market_stress:.1f}  (raw: {f"{result.raw_market_stress:.2f} pts" if result.raw_market_stress is not None else "n/a"})
+  Political (live)   : {result.components.political:.1f}  (raw: {f"{result.raw_political:.2f} score" if result.raw_political is not None else "n/a"})
 {f'  Political (4-wk MA): {result.political_smoothed:.1f}' if result.political_smoothed is not None else ''}\
-  Forex Reserves     : {result.components.forex_reserves:.1f}  (raw: {result.raw_forex_reserves:.2f} months import cover)
-  Eurobond Spread    : {result.components.eurobond_spread:.1f}  (raw: {result.raw_eurobond_spread:.2f} pp vs US 10yr)
-  M-Pesa Vol (YoY)   : {result.components.mpesa_volume:.1f}  (raw: {result.raw_mpesa_volume:+.1f}% YoY)
+  Forex Reserves     : {result.components.forex_reserves:.1f}  (raw: {f"{result.raw_forex_reserves:.2f} months import cover" if result.raw_forex_reserves is not None else "n/a"})
+  Eurobond Spread    : {result.components.eurobond_spread:.1f}  (raw: {f"{result.raw_eurobond_spread:.2f} pp vs US 10yr" if result.raw_eurobond_spread is not None else "n/a"})
+  M-Pesa Vol (YoY)   : {result.components.mpesa_volume:.1f}  (raw: {f"{result.raw_mpesa_volume:+.1f}% YoY" if result.raw_mpesa_volume is not None else "n/a"})
 
 Scale: 0–30 Low | 30–50 Moderate | 50–70 High | 70–85 Severe | 85+ Crisis
 
