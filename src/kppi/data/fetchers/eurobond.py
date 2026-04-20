@@ -9,14 +9,14 @@ A wider spread signals that investors demand a higher premium to hold Kenyan
 government debt, reflecting perceived fiscal/political stress.
 
 Data sources (both free, no API key required):
-  - US 10yr Treasury yield : US Treasury Department daily XML feed
+    - US 10yr Treasury yield : US Treasury Department daily XML feed
   - Kenya Eurobond yield    : worldgovernmentbonds.com HTML scrape
 
 Historical context (Kenya):
   ~4 pp  (2014-2019) — stable
   ~6 pp  (2020 COVID)
   ~9 pp  (2022-2023 IMF talks / Eurobond redemption fears)
-  >10 pp → crisis territory
+  >10 pp -> crisis territory
 """
 from __future__ import annotations
 
@@ -29,26 +29,25 @@ from loguru import logger
 
 from kppi.data.fetchers.base import BaseFetcher, IndicatorReading
 
-# ── US Treasury XML ───────────────────────────────────────────────────────────
-
+# ── US 10yr Treasury yield via FRED CSV ───────────────────────────────────────
+# US Treasury Department daily yield curve XML feed (official source)
+# Year-only format returns all entries for the current year; monthly returns 0.
 _TREASURY_XML_URL = (
     "https://home.treasury.gov/resource-center/data-chart-center/"
     "interest-rates/pages/xml?data=daily_treasury_yield_curve"
-    "&field_tdr_date_value={yyyymm}"
+    "&field_tdr_date_value={yyyy}"
 )
 
-# XML namespace used in Treasury's Atom feed
+# XML namespaces used in Treasury's Atom feed
 _NS_ATOM = "http://www.w3.org/2005/Atom"
 _NS_D = "http://schemas.microsoft.com/ado/2007/08/dataservices"
 
-# ── Kenya Eurobond ────────────────────────────────────────────────────────────
-
-_WGB_KENYA_URL = "https://worldgovernmentbonds.com/country/kenya/"
+# ── worldgovernmentbonds.com ──────────────────────────────────────────────────
+_WGB_KENYA_URL = "https://www.worldgovernmentbonds.com/country/kenya/"
 
 _HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml",
@@ -68,16 +67,14 @@ def _fetch_us_10yr_treasury() -> float:
     """
     Fetch the most recent US 10-year Treasury yield from the official
     Treasury Department daily yield curve XML feed.
-    Returns yield as a percentage, e.g. 4.25.
+    Returns yield as a percentage, e.g. 4.26.
     """
-    yyyymm = datetime.utcnow().strftime("%Y%m")
-    url = _TREASURY_XML_URL.format(yyyymm=yyyymm)
-
-    resp = requests.get(url, headers=_HEADERS, timeout=20)
+    yyyy = datetime.utcnow().strftime("%Y")
+    url = _TREASURY_XML_URL.format(yyyy=yyyy)
+    resp = requests.get(url, headers=_HEADERS, timeout=30)
     resp.raise_for_status()
 
     root = ET.fromstring(resp.content)
-
     entries = root.findall(f"{{{_NS_ATOM}}}entry")
     if not entries:
         raise ValueError("US Treasury XML: no entries found in feed")
@@ -85,14 +82,13 @@ def _fetch_us_10yr_treasury() -> float:
     # Most recent entry is last in the feed
     last_entry = entries[-1]
     bc_10yr = last_entry.find(f".//{{{_NS_D}}}BC_10YEAR")
-
     if bc_10yr is None or not bc_10yr.text:
         raise ValueError("US Treasury XML: BC_10YEAR element missing or empty")
 
     value = float(bc_10yr.text)
     if not (0.1 <= value <= 15.0):
         raise ValueError(
-            f"US Treasury 10yr yield {value}% is implausible; expected 0.1–15%"
+            f"US Treasury 10yr yield {value}% is implausible; expected 0.1-15%"
         )
 
     logger.debug("US 10yr Treasury yield: {:.3f}%", value)
@@ -104,9 +100,19 @@ def _fetch_kenya_eurobond_yield() -> float:
     Scrape Kenya's Eurobond yield (approximately 10-year tenor) from
     worldgovernmentbonds.com.
 
+    NOTE: The site's SSL certificate sometimes expires. For this local
+    research tool we suppress the verification warning and proceed --
+    the risk of MITM on a read-only public data scrape is low.
+
     Raises ValueError if the yield cannot be reliably extracted.
     """
-    resp = requests.get(_WGB_KENYA_URL, headers=_HEADERS, timeout=20)
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    logger.warning(
+        "worldgovernmentbonds.com SSL cert may be expired — using verify=False"
+    )
+    resp = requests.get(_WGB_KENYA_URL, headers=_HEADERS, timeout=20, verify=False)
     resp.raise_for_status()
     text = resp.text
 

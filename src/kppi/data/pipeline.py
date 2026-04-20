@@ -193,16 +193,16 @@ class DataPipeline:
     def _fetch_forex_reserves(self) -> Optional[IndicatorReading]:
         if self._use_mock:
             return MockForexReservesFetcher().safe_fetch()
-        # Primary: CBK forex reserves page
+        # Primary: CBK MPC posts
         reading = ForexReservesFetcher().safe_fetch()
         if reading is not None:
             return reading
-        logger.warning("CBK forex reserves fetch failed; trying World Bank fallback")
+        logger.warning("CBK forex reserves fetch failed; trying World Bank fallback (60s timeout)")
+        # Fallback: World Bank computed (annual, ~1yr lag, 60s timeout)
         reading = WorldBankReservesFetcher().safe_fetch()
         if reading is None:
-            logger.warning("Live forex reserves fetch failed; falling back to mock")
-            reading = MockForexReservesFetcher().safe_fetch()
-        return reading
+            logger.error("All live forex reserves sources failed; indicator will be excluded this cycle")
+        return reading  # None → calculator substitutes neutral 50
 
     # ── Eurobond Spread ─────────────────────────────────────────
     def _fetch_eurobond_spread(self) -> Optional[IndicatorReading]:
@@ -210,9 +210,8 @@ class DataPipeline:
             return MockEurobondSpreadFetcher().safe_fetch()
         reading = EurobondSpreadFetcher().safe_fetch()
         if reading is None:
-            logger.warning("Eurobond spread fetch failed; falling back to mock")
-            reading = MockEurobondSpreadFetcher().safe_fetch()
-        return reading
+            logger.warning("Eurobond spread: no live source available; indicator excluded this cycle")
+        return reading  # None → calculator substitutes neutral 50
 
     # ── M-Pesa Volume ────────────────────────────────────────────
     def _fetch_mpesa_volume(self) -> Optional[IndicatorReading]:

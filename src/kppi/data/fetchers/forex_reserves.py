@@ -1,113 +1,137 @@
 """
 Kenya official foreign exchange reserves fetcher.
 
-Primary source: Central Bank of Kenya forex reserves page (weekly, no key).
-Fallback: World Bank indicator FI.RES.XGSD.ZS (total reserves in months of
-imports — updated annually with a lag).
+Sources tried in order:
+  1. CBK MPC press releases (WordPress posts) -- real-time, when parseable
+  2. World Bank API (FI.RES.TOTL.CD / BM.GSR.GNFS.CD) -- annual, ~1yr lag, 60s timeout
 
-Returns months of import cover — the IMF standard reserve adequacy metric.
-IMF guideline: ≥3 months is minimum; ≥4 months considered adequate for Kenya.
+Returns months of import cover -- the IMF standard reserve adequacy metric.
+IMF guideline: >= 3 months minimum; >= 4 months adequate for Kenya.
+
+No mock fallback. If all sources fail, the fetcher raises and the pipeline
+returns None, letting the calculator substitute a neutral 50.
 """
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import requests
 from loguru import logger
 
-from kppi.data.fetchers.base import BaseFetcher, IndicatorReading, _get_json
+from kppi.data.fetchers.base import BaseFetcher, IndicatorReading
 
-_CBK_FOREX_URL = "https://www.centralbank.go.ke/forex-reserves/"
+# ─── CBK MPC scraper ─────────────────────────────────────────────────────────
+_CBK_WP_POSTS_URL = "https://www.centralbank.go.ke/wp-json/wp/v2/posts"
 _CBK_HEADERS = {
     "User-Agent": (
-        "KPPI/2.0 research-tool "
-        "(Kenya Policy Pressure Index - academic/non-commercial)"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml",
+    "Accept": "text/html,application/xhtml+xml,application/xml",
 }
-
-# Matches "4.97 months" or "4.97 months of import cover" on the CBK page.
-# The CBK page typically shows this near "Usable Foreign Exchange Reserves".
 _MONTHS_RE = re.compile(
-    r"([\d]+\.[\d]{1,3})\s*months?\s*(?:of\s*(?:import\s*cover)?)?",
+    r"([\d]+\.[\d]{1,3})\s*months?\s*(?:of\s*import(?:\s*cover)?)?",
     re.IGNORECASE,
 )
 
-# Matches USD value like "7,234.2" or "7234.2" (USD millions)
-_USD_MILLIONS_RE = re.compile(
-    r"(?:usable|official|total)\s+(?:foreign\s+exchange\s+)?reserves?\D{0,30}"
-    r"(?:USD\s*)?(?:Kshs\.?\s*)?([0-9,]+\.?[0-9]*)\s*(?:million|mn|mln)?",
-    re.IGNORECASE,
-)
-
+# ─── World Bank API ───────────────────────────────────────────────────────────
 _WB_BASE = "https://api.worldbank.org/v2/country/KE/indicator"
-INDICATOR_RESERVES_MONTHS = "FI.RES.XGSD.ZS"   # total reserves in months of imports
+INDICATOR_RESERVES_USD = "FI.RES.TOTL.CD"   # Total reserves incl. gold, current USD
+INDICATOR_IMPORTS_USD  = "BM.GSR.GNFS.CD"   # Imports goods+services, current USD
+_WB_TIMEOUT = 60  # seconds -- World Bank CDN can be slow; 60s is reliable
 
 
-def _parse_wb_reserves(data: list[Any]) -> float:
-    if len(data) < 2 or not data[1]:
-        raise ValueError("Empty World Bank response for reserves indicator")
+def _wb_value(indicator: str, timeout: int = _WB_TIMEOUT) -> float:
+    """Return the most recent non-null World Bank annual observation for Kenya."""
+    url = f"{_WB_BASE}/{indicator}"
+    r = requests.get(url, params={"format": "json", "per_page": 5}, timeout=timeout)
+    r.raise_for_status()
+    data = r.json()
+    if not isinstance(data, list) or len(data) < 2 or not data[1]:
+        raise ValueError(f"Empty World Bank response for {indicator}")
     for obs in data[1]:
         if obs.get("value") is not None:
             return float(obs["value"])
-    raise ValueError("All World Bank reserve observations are null")
+    raise ValueError(f"All World Bank observations null for {indicator}")
 
 
 class ForexReservesFetcher(BaseFetcher):
     """
-    Kenya official forex reserves in months of import cover (CBK primary).
+    Kenya forex reserves in months of import cover.
 
-    The CBK updates this weekly after the Thursday MPC briefings and
-    publishes it prominently on their forex reserves page.
+    Scrapes the latest CBK MPC press-release post for a sentence like
+    "usable foreign exchange reserves stood at ... (Y.Y months of import cover)".
     """
 
     def fetch(self) -> IndicatorReading:
-        response = requests.get(_CBK_FOREX_URL, headers=_CBK_HEADERS, timeout=20)
-        response.raise_for_status()
-        response.encoding = "utf-8"
-        text = response.text
-
-        # Primary: look for "X.XX months" pattern
-        m = _MONTHS_RE.search(text)
-        if m:
-            value = float(m.group(1))
-            if 1.0 <= value <= 24.0:
-                return IndicatorReading(
-                    name="forex_reserves",
-                    value=value,
-                    unit="months_import_cover",
-                    source="CBK - official forex reserves",
-                    notes=f"Official usable forex reserves: {value:.2f} months of import cover",
-                )
-            logger.warning(
-                "CBK forex: parsed months value {} is implausible, ignoring", value
-            )
-
-        raise ValueError(
-            "CBK forex reserves page: could not parse months of import cover. "
-            "Page layout may have changed."
+        resp = requests.get(
+            _CBK_WP_POSTS_URL,
+            params={"search": "monetary policy", "per_page": 5, "_fields": "link,title"},
+            headers=_CBK_HEADERS,
+            timeout=15,
         )
+        resp.raise_for_status()
+        posts = resp.json()
+        if not posts:
+            raise ValueError("CBK WP API returned no MPC posts")
+
+        for post in posts:
+            post_url = post.get("link", "")
+            if not post_url:
+                continue
+            try:
+                page = requests.get(post_url, headers=_CBK_HEADERS, timeout=15)
+                page.raise_for_status()
+                text = re.sub(r"<[^>]+>", " ", page.text)
+                text = re.sub(r"\s+", " ", text)
+                m = _MONTHS_RE.search(text)
+                if m:
+                    value = float(m.group(1))
+                    if 1.0 <= value <= 24.0:
+                        logger.debug("CBK MPC: {:.2f} months from {}", value, post_url)
+                        return IndicatorReading(
+                            name="forex_reserves",
+                            value=value,
+                            unit="months_import_cover",
+                            source="CBK - MPC press release",
+                            notes=f"Forex reserves: {value:.2f} months of import cover",
+                        )
+            except Exception as e:
+                logger.debug("CBK MPC post failed for {}: {}", post_url, e)
+                continue
+
+        raise ValueError("CBK MPC posts: could not parse months of import cover")
 
 
 class WorldBankReservesFetcher(BaseFetcher):
     """
-    Fallback: World Bank total reserves in months of imports for Kenya.
-    Typically updated with a 12+ month lag — use only when CBK scrape fails.
+    Fallback: World Bank computed months of import cover for Kenya.
+
+    Divides total reserves in USD (FI.RES.TOTL.CD) by monthly imports
+    (BM.GSR.GNFS.CD / 12). Annual data with ~12-month lag; timeout is
+    60s because the World Bank API CDN can be slow.
     """
 
     def fetch(self) -> IndicatorReading:
-        url = f"{_WB_BASE}/{INDICATOR_RESERVES_MONTHS}"
-        params = {"format": "json", "mrv": 5, "per_page": 5}
-        data = _get_json(url, params=params)
-        value = _parse_wb_reserves(data)
+        res_usd = _wb_value(INDICATOR_RESERVES_USD)
+        imp_usd = _wb_value(INDICATOR_IMPORTS_USD)
+        if imp_usd <= 0:
+            raise ValueError("World Bank imports value is zero/negative")
+        monthly_imp = imp_usd / 12
+        months = res_usd / monthly_imp
+        if not (1.0 <= months <= 24.0):
+            raise ValueError(f"World Bank computed months {months:.2f} is implausible")
+        logger.debug(
+            "WB reserves: USD {:.2f}bn / USD {:.2f}bn/mo = {:.2f} months",
+            res_usd / 1e9, monthly_imp / 1e9, months,
+        )
         return IndicatorReading(
             name="forex_reserves",
-            value=value,
+            value=round(months, 2),
             unit="months_import_cover",
-            source="World Bank - FI.RES.XGSD.ZS (lagged)",
+            source="World Bank - FI.RES.TOTL.CD / BM.GSR.GNFS.CD (lagged ~1yr)",
             notes=(
-                f"Total reserves in months of imports: {value:.2f} "
-                "(World Bank — may lag 12+ months)"
+                f"Total reserves USD {res_usd/1e9:.1f}bn / monthly imports "
+                f"USD {monthly_imp/1e9:.2f}bn = {months:.2f} months"
             ),
         )
