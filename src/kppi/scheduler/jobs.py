@@ -36,7 +36,7 @@ def run_once(db: Database | None = None) -> None:
       4. Send email summary (if EMAIL_ENABLED=true)
     """
     db = db or Database()
-    pipeline = DataPipeline()
+    pipeline = DataPipeline(db=db)
     calculator = KPPICalculator()
 
     logger.info("── KPPI update cycle started at {} ──", datetime.utcnow().isoformat())

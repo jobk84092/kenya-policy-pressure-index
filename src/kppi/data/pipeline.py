@@ -36,6 +36,9 @@ from kppi.data.fetchers import (
     MockEurobondSpreadFetcher,
     MockMPesaVolumeFetcher,
 )
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from kppi.storage.database import Database
 
 
 # Market stress indicator: live NASI index from nseinsider.co.ke
@@ -100,8 +103,32 @@ class DataPipeline:
         snapshot = pipeline.run()
     """
 
-    def __init__(self) -> None:
+    def __init__(self, db: "Database | None" = None) -> None:
         self._use_mock = settings.use_mock_data
+        self._db = db
+
+    def _last_known(self, raw_col: str, name: str, unit: str) -> Optional[IndicatorReading]:
+        """Return the most recent stored value for an indicator, or None."""
+        if self._db is None:
+            return None
+        try:
+            row = self._db.latest_result()
+            if row and row.get(raw_col) is not None:
+                val = float(row[raw_col])
+                logger.warning(
+                    "{}: live fetch failed; carrying forward last known value {:.3g} from DB",
+                    name, val,
+                )
+                return IndicatorReading(
+                    name=name,
+                    value=val,
+                    unit=unit,
+                    source="DB – last known value (live fetch failed)",
+                    notes=f"Carried forward from DB row id={row.get('id')}, ts={row.get('timestamp')}",
+                )
+        except Exception as exc:
+            logger.debug("DB last-known lookup failed for {}: {}", name, exc)
+        return None
 
     # ── Inflation ─────────────────────────────────────────────────────────────
     def _fetch_inflation(self) -> Optional[IndicatorReading]:
@@ -109,8 +136,9 @@ class DataPipeline:
             return MockInflationFetcher().safe_fetch()
         reading = InflationFetcher().safe_fetch()
         if reading is None:
-            logger.warning("Live inflation fetch failed; falling back to mock")
-            reading = MockInflationFetcher().safe_fetch()
+            reading = self._last_known("raw_inflation", "inflation", "%")
+        if reading is None:
+            logger.error("Inflation: no live or stored data available; indicator excluded")
         return reading
 
     # ── FX Rate ───────────────────────────────────────────────────────────────
@@ -119,8 +147,9 @@ class DataPipeline:
             return MockFXRateFetcher().safe_fetch()
         reading = FXRateFetcher().safe_fetch()
         if reading is None:
-            logger.warning("Live FX fetch failed; falling back to mock")
-            reading = MockFXRateFetcher().safe_fetch()
+            reading = self._last_known("raw_fx_rate", "fx_rate", "KES/USD")
+        if reading is None:
+            logger.error("FX rate: no live or stored data available; indicator excluded")
         return reading
 
     # ── Bond Yield ────────────────────────────────────────────────────────────
@@ -135,8 +164,9 @@ class DataPipeline:
         # Secondary: World Bank (updated with a lag, but free)
         reading = TBillRateFetcher().safe_fetch()
         if reading is None:
-            logger.warning("Live bond yield fetch failed; falling back to mock")
-            reading = MockBondYieldFetcher().safe_fetch()
+            reading = self._last_known("raw_bond_yield", "bond_yield", "%")
+        if reading is None:
+            logger.error("Bond yield: no live or stored data available; indicator excluded")
         return reading
 
     # ── Market Stress (NASI) ──────────────────────────────────────────────────
@@ -147,8 +177,10 @@ class DataPipeline:
         reading = NASIFetcher().safe_fetch()
         if reading is not None:
             return reading
-        logger.warning("NASI fetch failed; falling back to mock")
-        return MockMarketStressFetcher().safe_fetch()
+        reading = self._last_known("raw_market_stress", "market_stress", "pts")
+        if reading is None:
+            logger.error("Market stress: no live or stored data available; indicator excluded")
+        return reading
 
     # ── Political Pressure ────────────────────────────────────────────────────
     def _fetch_political(self) -> Optional[IndicatorReading]:
@@ -185,8 +217,10 @@ class DataPipeline:
             logger.info("Political: GDELT only (KenyaNews unavailable)")
             return gdelt
         else:
-            logger.warning("All political fetchers failed; falling back to mock")
-            return MockPoliticalFetcher().safe_fetch()
+            reading = self._last_known("raw_political", "political_pressure", "score_0_100")
+            if reading is None:
+                logger.error("Political: no live or stored data available; indicator excluded")
+            return reading
 
     # ── Orchestrator ────────────────────────────────────────────────
     # ── Forex Reserves ───────────────────────────────────────────
@@ -219,8 +253,9 @@ class DataPipeline:
             return MockMPesaVolumeFetcher().safe_fetch()
         reading = MPesaVolumeFetcher().safe_fetch()
         if reading is None:
-            logger.warning("M-Pesa volume fetch failed; falling back to mock")
-            reading = MockMPesaVolumeFetcher().safe_fetch()
+            reading = self._last_known("raw_mpesa_volume", "mpesa_volume", "% YoY")
+        if reading is None:
+            logger.error("M-Pesa volume: no live or stored data available; indicator excluded")
         return reading
 
     # ── Orchestrator ──────────────────────────────────────────────────────────
